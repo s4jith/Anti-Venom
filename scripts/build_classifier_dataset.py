@@ -6,6 +6,7 @@ Usage:
     python scripts/build_classifier_dataset.py --output-dir /tmp/classifier_data
 """
 from __future__ import annotations
+
 import argparse
 import json
 import random
@@ -18,7 +19,10 @@ _SCRIPTS_DIR = Path(__file__).parent
 _PROJECT_ROOT = _SCRIPTS_DIR.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
-from scripts.build_benchmark_dataset import _BUILTIN_ATTACKS, _BUILTIN_BENIGN  # type: ignore[import]
+from scripts.build_benchmark_dataset import (  # type: ignore[import]  # noqa: E402
+    _BUILTIN_ATTACKS,
+    _BUILTIN_BENIGN,
+)
 
 DEFAULT_OUTPUT_DIR = _PROJECT_ROOT / "tests" / "benchmarks" / "datasets" / "classifier"
 
@@ -27,58 +31,88 @@ def _try_hf_injections() -> list[dict]:
     samples: list[dict] = []
     try:
         from datasets import load_dataset  # type: ignore[import]
-        ds = load_dataset("jackhhao/jailbreak-classification", split="train", trust_remote_code=False)
-        for row in ds:
-            if row.get("type") == "injection":
-                samples.append({"text": row["prompt"], "label": 1})
+        # jackhhao uses type in {"jailbreak", "benign"} — jailbreak == injection.
+        for split in ("train", "test"):
+            try:
+                ds = load_dataset("jackhhao/jailbreak-classification", split=split, trust_remote_code=False)
+            except Exception:
+                continue
+            for row in ds:
+                if row.get("type") == "jailbreak":
+                    samples.append({"text": row["prompt"], "label": 1})
         print(f"  jackhhao/jailbreak-classification: {len(samples)} injection samples")
     except Exception as e:
         warnings.warn(f"jackhhao/jailbreak-classification unavailable: {e}", stacklevel=2)
 
+    # deepset/prompt-injections: document-style injection vs benign (label 1/0).
     try:
         from datasets import load_dataset  # type: ignore[import]
-        ds2 = load_dataset("rubend18/ChatGPT-Jailbreak-Prompts", split="train", trust_remote_code=False)
         count = 0
-        for row in ds2:
-            text = row.get("Prompt") or row.get("text") or ""
-            if text:
-                samples.append({"text": text, "label": 1})
-                count += 1
-        print(f"  rubend18/ChatGPT-Jailbreak-Prompts: {count} samples")
+        for split in ("train", "test"):
+            try:
+                ds = load_dataset("deepset/prompt-injections", split=split, trust_remote_code=False)
+            except Exception:
+                continue
+            for row in ds:
+                text = row.get("text") or ""
+                if text and int(row.get("label", 0)) == 1:
+                    samples.append({"text": text, "label": 1})
+                    count += 1
+        print(f"  deepset/prompt-injections: {count} injection samples")
     except Exception as e:
-        warnings.warn(f"rubend18/ChatGPT-Jailbreak-Prompts unavailable: {e}", stacklevel=2)
-
-    try:
-        from datasets import load_dataset  # type: ignore[import]
-        ds3 = load_dataset("notrichardren/prompt-injection-merged", split="train", trust_remote_code=False)
-        count = 0
-        for row in ds3:
-            text = row.get("text") or row.get("prompt") or ""
-            lbl = row.get("label", row.get("is_injection", -1))
-            if text and lbl == 1:
-                samples.append({"text": text, "label": 1})
-                count += 1
-        print(f"  notrichardren/prompt-injection-merged: {count} injection samples")
-    except Exception as e:
-        warnings.warn(f"notrichardren/prompt-injection-merged unavailable: {e}", stacklevel=2)
+        warnings.warn(f"deepset/prompt-injections unavailable: {e}", stacklevel=2)
 
     return samples
 
 
 def _try_hf_benign(n: int) -> list[dict]:
     samples: list[dict] = []
+    # Reliable benign source: the "benign" rows of jackhhao/jailbreak-classification.
     try:
         from datasets import load_dataset  # type: ignore[import]
-        ds = load_dataset("wikipedia", "20220301.en", split="train", streaming=True, trust_remote_code=False)
-        for item in ds:
-            para = item.get("text", "").split("\n\n")[0].strip()
-            if 80 <= len(para) <= 800:
-                samples.append({"text": para, "label": 0})
-            if len(samples) >= n:
-                break
-        print(f"  Wikipedia: {len(samples)} benign samples")
+        for split in ("train", "test"):
+            try:
+                ds = load_dataset("jackhhao/jailbreak-classification", split=split, trust_remote_code=False)
+            except Exception:
+                continue
+            for row in ds:
+                if row.get("type") == "benign":
+                    samples.append({"text": row["prompt"], "label": 0})
+        print(f"  jackhhao benign: {len(samples)} samples")
     except Exception as e:
-        warnings.warn(f"Wikipedia dataset unavailable: {e}", stacklevel=2)
+        warnings.warn(f"jackhhao benign unavailable: {e}", stacklevel=2)
+
+    # deepset benign (label 0).
+    try:
+        from datasets import load_dataset  # type: ignore[import]
+        count = 0
+        for split in ("train", "test"):
+            try:
+                ds = load_dataset("deepset/prompt-injections", split=split, trust_remote_code=False)
+            except Exception:
+                continue
+            for row in ds:
+                text = row.get("text") or ""
+                if text and int(row.get("label", 1)) == 0:
+                    samples.append({"text": text, "label": 0})
+                    count += 1
+        print(f"  deepset benign: {count} samples")
+    except Exception as e:
+        warnings.warn(f"deepset benign unavailable: {e}", stacklevel=2)
+
+    # Top up from Wikipedia if we still need more (best-effort).
+    if len(samples) < n:
+        try:
+            from datasets import load_dataset  # type: ignore[import]
+            ds = load_dataset("wikipedia", "20220301.en", split="train", streaming=True, trust_remote_code=False)
+            for item in ds:
+                para = item.get("text", "").split("\n\n")[0].strip()
+                if 80 <= len(para) <= 800:
+                    samples.append({"text": para, "label": 0})
+                if len(samples) >= n:
+                    break
+        except Exception as e:
+            warnings.warn(f"Wikipedia top-up unavailable: {e}", stacklevel=2)
     return samples
 
 
@@ -94,7 +128,7 @@ def _split(items: list[dict], seed: int = 42) -> tuple[list[dict], list[dict], l
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
     path.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
-    print(f"  Wrote {len(rows):>5} rows → {path}")
+    print(f"  Wrote {len(rows):>5} rows -> {path}")
 
 
 def build(output_dir: Path, builtin_only: bool = False) -> None:

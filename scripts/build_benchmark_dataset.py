@@ -10,10 +10,10 @@ Usage:
     python scripts/build_benchmark_dataset.py --attacks 200 --benign 200
 """
 from __future__ import annotations
+
 import argparse
 import json
 import random
-import sys
 from pathlib import Path
 
 DATASETS_DIR = Path(__file__).parent.parent / "tests" / "benchmarks" / "datasets"

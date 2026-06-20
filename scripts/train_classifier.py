@@ -5,6 +5,7 @@ Usage:
     python scripts/train_classifier.py --dataset-dir /data/clf --output-dir /data/model --epochs 5
 """
 from __future__ import annotations
+
 import argparse
 import json
 import sys
@@ -49,13 +50,16 @@ def train(
 
     import numpy as np
     from datasets import Dataset  # type: ignore[import]
-    from transformers import (  # type: ignore[import]
-        AutoTokenizer,
-        AutoModelForSequenceClassification,
-        TrainingArguments,
-        Trainer,
+    from sklearn.metrics import (  # type: ignore[import]
+        accuracy_score,
+        precision_recall_fscore_support,
     )
-    from sklearn.metrics import accuracy_score, precision_recall_fscore_support  # type: ignore[import]
+    from transformers import (  # type: ignore[import]
+        AutoModelForSequenceClassification,
+        AutoTokenizer,
+        Trainer,
+        TrainingArguments,
+    )
 
     train_path = dataset_dir / "train.jsonl"
     val_path = dataset_dir / "val.jsonl"
@@ -74,7 +78,7 @@ def train(
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     def tokenize(batch):
-        return tokenizer(batch["text"], truncation=True, max_length=512, padding="max_length")
+        return tokenizer(batch["text"], truncation=True, max_length=256, padding="max_length")
 
     train_ds = Dataset.from_dict({"text": train_texts, "label": train_labels})
     val_ds = Dataset.from_dict({"text": val_texts, "label": val_labels})
@@ -95,18 +99,26 @@ def train(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    training_args = TrainingArguments(
-        output_dir=str(output_dir),
-        num_train_epochs=epochs,
-        per_device_train_batch_size=batch_size,
-        per_device_eval_batch_size=batch_size,
-        evaluation_strategy="epoch",
-        save_strategy="epoch",
-        load_best_model_at_end=True,
-        metric_for_best_model="f1",
-        logging_steps=50,
-        report_to="none",
+    # transformers >=4.46 renamed `evaluation_strategy` -> `eval_strategy`.
+    import inspect
+    eval_kw = (
+        "eval_strategy"
+        if "eval_strategy" in inspect.signature(TrainingArguments.__init__).parameters
+        else "evaluation_strategy"
     )
+    ta_kwargs = {
+        "output_dir": str(output_dir),
+        "num_train_epochs": epochs,
+        "per_device_train_batch_size": batch_size,
+        "per_device_eval_batch_size": batch_size,
+        eval_kw: "epoch",
+        "save_strategy": "epoch",
+        "load_best_model_at_end": True,
+        "metric_for_best_model": "f1",
+        "logging_steps": 50,
+        "report_to": "none",
+    }
+    training_args = TrainingArguments(**ta_kwargs)
 
     trainer = Trainer(
         model=model,
