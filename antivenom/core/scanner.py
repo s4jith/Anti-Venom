@@ -52,7 +52,16 @@ class AntiVenomScanner:
             from antivenom.layers.cross_chunk import CrossChunkLayer
             medium.append(CrossChunkLayer(self.config.layer_configs.get("cross_chunk", {})))
 
-        return DetectionPipeline(fast_layers=fast, medium_layers=medium, config=self.config)
+        # SLOW layers (v0.3 — sequential, opt-in)
+        slow: list[Any] = []
+        if enabled is None or "classifier" in (enabled or []):
+            from antivenom.layers.classifier import ClassifierLayer
+            slow.append(ClassifierLayer(self.config.layer_configs.get("classifier", {})))
+        if enabled is None or "llm_judge" in (enabled or []):
+            from antivenom.layers.llm_judge import LLMJudgeLayer
+            slow.append(LLMJudgeLayer(**self.config.layer_configs.get("llm_judge", {})))
+
+        return DetectionPipeline(fast_layers=fast, medium_layers=medium, slow_layers=slow, config=self.config)
 
     def _ensure_audit(self) -> None:
         if self._initialized:
