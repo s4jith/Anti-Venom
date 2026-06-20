@@ -1,14 +1,13 @@
 from __future__ import annotations
+
 import json
 import sqlite3
+import threading
 import uuid
-from dataclasses import asdict
 from datetime import datetime, timezone
-from pathlib import Path
 
 from antivenom.core.chunk import Chunk
 from antivenom.core.result import ScanResult
-
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS quarantine (
@@ -24,6 +23,9 @@ CREATE TABLE IF NOT EXISTS quarantine (
 )
 """
 
+_COLS = ["quarantine_id", "chunk_id", "source_id", "chunk_text",
+         "metadata", "confidence", "severity", "evidence", "quarantined_at"]
+
 
 class QuarantineEntry:
     __slots__ = ("quarantine_id", "chunk_id", "source_id", "chunk_text",
@@ -35,61 +37,90 @@ class QuarantineEntry:
 
 
 class QuarantineStore:
-    """SQLite-backed quarantine store. Sync (v0.1)."""
+    """Thread-safe SQLite-backed quarantine store.
+
+    Safe for concurrent multi-threaded use: a single connection is shared with
+    check_same_thread=False and every access is serialized through a lock.
+    WAL journaling + a busy timeout let separate processes/connections coexist
+    without "database is locked" errors.
+    """
 
     def __init__(self, db_path: str | None = "antivenom_audit.db") -> None:
-        if db_path:
-            self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        else:
-            self._conn = sqlite3.connect(":memory:", check_same_thread=False)
-        self._conn.execute(_CREATE_TABLE)
-        self._conn.commit()
+        self._lock = threading.RLock()
+        target = db_path if db_path else ":memory:"
+        self._conn = sqlite3.connect(target, check_same_thread=False, timeout=30.0)
+        with self._lock:
+            # WAL allows concurrent readers with a writer; only meaningful for
+            # file-backed DBs (no-op / harmless for :memory:).
+            if db_path:
+                try:
+                    self._conn.execute("PRAGMA journal_mode=WAL")
+                    self._conn.execute("PRAGMA synchronous=NORMAL")
+                except sqlite3.Error:
+                    pass
+            self._conn.execute("PRAGMA busy_timeout=30000")
+            self._conn.execute(_CREATE_TABLE)
+            self._conn.commit()
 
     def quarantine(self, chunk: Chunk, result: ScanResult) -> str:
         qid = str(uuid.uuid4())
         evidence = json.dumps([e for r in result.layer_results for e in r.evidence][:10])
-        self._conn.execute(
-            "INSERT INTO quarantine VALUES (?,?,?,?,?,?,?,?,?)",
-            (
-                qid,
-                result.chunk_id,
-                chunk.source_id,
-                chunk.text,
-                json.dumps(chunk.metadata),
-                result.confidence,
-                result.severity.value,
-                evidence,
-                datetime.now(timezone.utc).isoformat(),
-            ),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO quarantine VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    qid,
+                    result.chunk_id,
+                    chunk.source_id,
+                    chunk.text,
+                    json.dumps(chunk.metadata),
+                    result.confidence,
+                    result.severity.value,
+                    evidence,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            self._conn.commit()
         return qid
 
     def list_quarantined(self, limit: int = 100, offset: int = 0) -> list[QuarantineEntry]:
-        rows = self._conn.execute(
-            "SELECT * FROM quarantine ORDER BY quarantined_at DESC LIMIT ? OFFSET ?",
-            (limit, offset),
-        ).fetchall()
-        cols = ["quarantine_id", "chunk_id", "source_id", "chunk_text",
-                "metadata", "confidence", "severity", "evidence", "quarantined_at"]
-        return [QuarantineEntry(**dict(zip(cols, r))) for r in rows]
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM quarantine ORDER BY quarantined_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+        return [QuarantineEntry(**dict(zip(_COLS, r))) for r in rows]
 
     def get_quarantined(self, quarantine_id: str) -> QuarantineEntry | None:
-        row = self._conn.execute(
-            "SELECT * FROM quarantine WHERE quarantine_id = ?", (quarantine_id,)
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM quarantine WHERE quarantine_id = ?", (quarantine_id,)
+            ).fetchone()
         if not row:
             return None
-        cols = ["quarantine_id", "chunk_id", "source_id", "chunk_text",
-                "metadata", "confidence", "severity", "evidence", "quarantined_at"]
-        return QuarantineEntry(**dict(zip(cols, row)))
+        return QuarantineEntry(**dict(zip(_COLS, row)))
 
     def release(self, quarantine_id: str) -> bool:
-        cur = self._conn.execute(
-            "DELETE FROM quarantine WHERE quarantine_id = ?", (quarantine_id,)
-        )
-        self._conn.commit()
-        return cur.rowcount > 0
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM quarantine WHERE quarantine_id = ?", (quarantine_id,)
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
 
     def count(self) -> int:
-        return self._conn.execute("SELECT COUNT(*) FROM quarantine").fetchone()[0]
+        with self._lock:
+            return self._conn.execute("SELECT COUNT(*) FROM quarantine").fetchone()[0]
+
+    def close(self) -> None:
+        with self._lock:
+            try:
+                self._conn.close()
+            except sqlite3.Error:
+                pass
+
+    def __enter__(self) -> QuarantineStore:
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
