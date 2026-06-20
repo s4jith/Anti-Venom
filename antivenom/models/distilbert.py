@@ -58,12 +58,17 @@ class DistilBertClassifier:
             max_length=512,
             padding=True,
         )
+        # Run inference on the model's own device (GPU if available).
+        inputs = {k: v.to(self._model.device) for k, v in inputs.items()}
         with torch.no_grad():
             logits = self._model(**inputs).logits
-        # sigmoid over logit for class 1 (injection)
         if logits.shape[-1] == 1:
-            # binary single-output head
+            # Single-output (regression-style) head: sigmoid on the lone logit.
             prob = float(torch.sigmoid(logits[0, 0]).item())
         else:
-            prob = float(torch.sigmoid(logits[0, 1]).item())
+            # Multi-class head: softmax, take P(class 1 = injection). Using
+            # softmax (not sigmoid on one logit) is what makes the probability
+            # calibrated against the other class.
+            probs = torch.softmax(logits[0], dim=-1)
+            prob = float(probs[1].item())
         return prob >= 0.5, prob
