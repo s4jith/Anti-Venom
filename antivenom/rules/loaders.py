@@ -31,3 +31,20 @@ def dict_to_rule(data: dict) -> BaseRule:
 def load_json_rules(path: str | Path) -> list[BaseRule]:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     return [dict_to_rule(entry) for entry in data]
+
+
+def load_yaml_rules(path: str | Path) -> list[BaseRule]:
+    try:
+        import yaml  # type: ignore[import]
+    except ImportError:
+        raise ImportError("PyYAML is required to load YAML rules: pip install pyyaml")
+    data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    return [dict_to_rule(entry) for entry in data]
+
+
+def load_rules(path: str | Path) -> list[BaseRule]:
+    """Auto-detect format from file extension and load rules."""
+    p = Path(path)
+    if p.suffix in (".yaml", ".yml"):
+        return load_yaml_rules(p)
+    return load_json_rules(p)
