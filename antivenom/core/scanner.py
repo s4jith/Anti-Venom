@@ -1,8 +1,8 @@
 from __future__ import annotations
 import asyncio
 import hashlib
+import importlib.util
 import time
-import uuid
 from typing import Any
 
 from antivenom.core.chunk import Chunk
@@ -24,6 +24,7 @@ class AntiVenomScanner:
     def __init__(self, config: ScannerConfig | None = None) -> None:
         self.config = config or ScannerConfig()
         self._pipeline = self._build_pipeline()
+        self._cache: Any = None
         self._audit_logger: Any = None
         self._quarantine: Any = None
         self._initialized = False
@@ -31,13 +32,27 @@ class AntiVenomScanner:
     def _build_pipeline(self) -> DetectionPipeline:
         enabled = self.config.enabled_layers
         fast: list[Any] = []
+        medium: list[Any] = []
+
+        # FAST layers (v0.1)
         if enabled is None or "pattern" in enabled:
             fast.append(PatternLayer(self.config.layer_configs.get("pattern", {})))
         if enabled is None or "structural" in enabled:
             fast.append(StructuralLayer(self.config.layer_configs.get("structural", {})))
         if enabled is None or "canary" in enabled:
             fast.append(CanaryLayer(self.config.layer_configs.get("canary", {})))
-        return DetectionPipeline(fast_layers=fast, config=self.config)
+
+        # MEDIUM layers (v0.2 — only if dependencies installed)
+        if enabled is None or "semantic" in (enabled or []):
+            if importlib.util.find_spec("sentence_transformers") is not None:
+                from antivenom.layers.semantic import SemanticLayer
+                medium.append(SemanticLayer(self.config.layer_configs.get("semantic", {})))
+
+        if enabled is None or "cross_chunk" in (enabled or []):
+            from antivenom.layers.cross_chunk import CrossChunkLayer
+            medium.append(CrossChunkLayer(self.config.layer_configs.get("cross_chunk", {})))
+
+        return DetectionPipeline(fast_layers=fast, medium_layers=medium, config=self.config)
 
     def _ensure_audit(self) -> None:
         if self._initialized:
@@ -46,10 +61,21 @@ class AntiVenomScanner:
         from antivenom.audit.quarantine import QuarantineStore
         self._audit_logger = AuditLogger(path=self.config.audit_log_path)
         self._quarantine = QuarantineStore(db_path=self.config.db_path)
+        # Set up cache if configured
+        if getattr(self.config, "cache_enabled", False):
+            from antivenom.cache.hash_cache import HashCache
+            self._cache = HashCache(ttl=getattr(self.config, "cache_ttl_seconds", 3600))
         self._initialized = True
 
     async def ascan(self, chunk: Chunk) -> ScanResult:
         self._ensure_audit()
+
+        # Cache check
+        if self._cache is not None:
+            cached = self._cache.get(chunk.text)
+            if cached is not None:
+                return cached
+
         start = time.perf_counter()
         is_poisoned, confidence, layer_results = await self._pipeline.run(chunk)
         duration_ms = (time.perf_counter() - start) * 1000
@@ -59,6 +85,9 @@ class AntiVenomScanner:
             result = ScanResult.poisoned(chunk_id, confidence, layer_results, duration_ms)
         else:
             result = ScanResult.clean(chunk_id, layer_results, duration_ms)
+
+        if self._cache is not None:
+            self._cache.set(chunk.text, result)
 
         if self._audit_logger:
             self._audit_logger.log(chunk, result)
@@ -79,9 +108,11 @@ class AntiVenomScanner:
     async def ascan_batch(self, chunks: list[Chunk]) -> list[ScanResult]:
         self._ensure_audit()
         sem = asyncio.Semaphore(self.config.async_concurrency)
+
         async def _bounded(c: Chunk) -> ScanResult:
             async with sem:
                 return await self.ascan(c)
+
         return list(await asyncio.gather(*[_bounded(c) for c in chunks]))
 
     def scan_batch(self, chunks: list[Chunk]) -> list[ScanResult]:

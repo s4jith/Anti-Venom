@@ -21,3 +21,6 @@ class ScannerConfig:
     audit_log_path: str | None = "antivenom_audit.jsonl"
     # Max concurrent async tasks for batch scanning
     async_concurrency: int = 10
+    # Hash cache (v0.2)
+    cache_enabled: bool = False
+    cache_ttl_seconds: int = 3600
