@@ -1,8 +1,9 @@
 # Anti-Venom — Project Status Report
 
-> Last updated: 2026-06-20 | Version: 0.3.1 | Tests: 145/145 passing | ruff + mypy clean
+> Last updated: 2026-06-20 | Version: 0.3.2 | Tests: 162/162 passing | ruff + mypy clean
 >
-> **v0.3.1 is production-hardened for multi-user use** — see Section 12.
+> **v0.3.1**: production-hardened for multi-user use — see Section 12.
+> **v0.3.2**: DistilBERT trained (recall 74%→98%), LLM Judge validated vs real Ollama — see Section 13.
 
 ---
 
@@ -460,3 +461,58 @@ faults. Every item below is covered by an automated test.
 ---
 
 *Anti-Venom v0.3.1 — 54 source files · 145 tests · 99.7% precision · 74% recall (90%+ with semantic layer) · multi-user hardened, ruff + mypy clean*
+
+---
+
+## 13. v0.3.2 — Trained Classifier & Validated LLM Judge
+
+The two pieces that were "infrastructure only" in v0.3 are now **real**: the DistilBERT
+classifier is trained and the LLM Judge is validated against a live Ollama. This was
+done on real hardware (NVIDIA RTX 5050, 8GB) with a live Ollama instance.
+
+### DistilBERT classifier — TRAINED
+
+- **Training data (1,858 samples)**: real injection corpora — `jackhhao/jailbreak-classification` (jailbreak + benign) and `deepset/prompt-injections` — balanced 50/50, split 1486/185/187. **No overlap** with the benchmark's built-in corpus-poisoning strings, so the benchmark is an honest held-out generalization test.
+- **Training**: `distilbert-base-uncased` fine-tuned 3 epochs on GPU in **~60 seconds**.
+- **Validation set**: accuracy 98.4%, precision 99.0%, recall 98.0%, F1 0.985.
+- **Held-out test set**: precision 98.0%, recall 95.1%, F1 0.966.
+
+**Recall lift on the corpus-poisoning benchmark (held-out, different distribution):**
+
+| Metric | Regex layers only | + trained classifier |
+|---|---|---|
+| Precision | 99.7% | **99.8%** |
+| Recall | **74.0%** | **98.0%** |
+| F1 | 0.850 | **0.989** |
+| False negatives | 130 / 500 | **10 / 500** |
+| Latency p50 | 1.1ms | ~30ms (GPU) |
+
+The classifier caught 120 of the 130 attacks the regex layers missed — **the ≥90% recall target is met.**
+
+### Design fixes made during training
+
+- **Classifier is checkpoint-gated**: it activates only when `ANTIVENOM_CLASSIFIER_MODEL` (or a `model` path in config) is set. The base `distilbert-base-uncased` has a random classification head and must never be used for detection — without a fine-tuned checkpoint the layer degrades to non-triggered (and never downloads the base model during tests).
+- **`predict()` uses softmax** over the two class logits (calibrated probability) instead of sigmoid on a single logit; inference runs on the model's own device (GPU).
+- **Defense-in-depth confirmed**: the classifier alone misses terse role-play ("you are now DAN", "hypothetically if you had no rules") — those are caught by the pattern layer. A full-pipeline test asserts the layers cover each other's blind spots.
+
+### LLM Judge — VALIDATED against real Ollama
+
+- Tested live against `mistral:latest` and `gemma3:4b`.
+- **Found and fixed a real prompt bug**: the old prompt under-detected because models treated "ignore previous instructions / you are now DAN" as non-injection (no code present). The rewritten prompt defines corpus-poisoning injection precisely (override, jailbreak/persona, prompt extraction, exfiltration, hidden commands) and scores **5/5 on both models**.
+- `tests/integration/test_llm_judge_live.py`: 7 cases pass against gemma3:4b; auto-skips when Ollama is unreachable.
+
+### What still needs the user's action
+
+| Item | Status | Note |
+|---|---|---|
+| Publish trained model to HuggingFace Hub | **Pending** | Needs the user's `HF_TOKEN`. Model is trained locally at `models/antivenom-classifier/` (257MB, gitignored). One command: `model.push_to_hub("<user>/antivenom-classifier")`. |
+| Raise CI recall gate to 0.90 | Optional | Requires the trained model (or `[semantic]`) in the CI environment; the model isn't committed (too large), so CI still gates at 0.70 on regex-only. |
+
+### Honest notes
+
+- The trained model (257MB) is **gitignored**, not committed — large binaries don't belong in git. It's reproducible in ~1 min via the documented scripts, or publishable to HF Hub with the user's token.
+- The 30ms p50 with the classifier is the GPU inference cost in the SLOW stage; latency-sensitive deployments can leave the classifier disabled and rely on the FAST/MEDIUM layers (74% recall, ~1ms).
+
+---
+
+*Anti-Venom v0.3.2 — 54 source files · 162 tests · 99.8% precision · 98% recall (trained classifier) · multi-user hardened · classifier + LLM judge validated on real hardware*
