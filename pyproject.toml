@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "antivenom"
-version = "0.3.0"
+version = "0.3.1"
 description = "RAG Corpus Poisoning Detector — scans document chunks for adversarial prompt injections before vector DB storage"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -68,7 +68,12 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
-ignore = ["E501"]
+ignore = [
+    "E501",   # line length handled by formatter, not enforced
+    "B008",   # function-call-in-default — this IS the required Typer/FastAPI pattern
+    "B905",   # zip() without strict= — lengths are invariant at every call site
+    "SIM105", # try/except/pass is clearer than contextlib.suppress for hot paths
+]
 
 [tool.mypy]
 python_version = "3.10"

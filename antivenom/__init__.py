@@ -1,13 +1,13 @@
 """antivenom — RAG Corpus Poisoning Detector."""
+from antivenom.audit.quarantine import QuarantineStore
 from antivenom.core.chunk import Chunk
 from antivenom.core.config import ScannerConfig
 from antivenom.core.exceptions import AntiVenomError, ConfigError, DetectionError, LayerError
 from antivenom.core.result import LayerResult, ScanResult, Severity
 from antivenom.core.scanner import AntiVenomScanner
-from antivenom.audit.quarantine import QuarantineStore
 from antivenom.rules.registry import RuleRegistry
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 __all__ = [
     "__version__",

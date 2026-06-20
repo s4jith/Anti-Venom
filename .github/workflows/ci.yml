@@ -41,6 +41,10 @@ jobs:
       - name: Run integration tests
         run: uv run pytest tests/integration/ -q --tb=short
 
-      - name: Run benchmark (if dataset exists)
-        # v0.1 regex-only: 0.70 recall floor. Target >=0.90 after semantic layer (v0.2).
-        run: uv run python -m antivenom.benchmark --fail-below-recall 0.70 || true
+      - name: Build benchmark dataset
+        run: uv run python scripts/build_benchmark_dataset.py --builtin-only
+
+      - name: Run benchmark (enforced gate)
+        # CI installs no semantic/classifier extras, so FAST+MEDIUM regex layers
+        # set the floor at 0.70 recall. Raise to 0.90 once [semantic] is in CI.
+        run: uv run python -m antivenom.benchmark --fail-below-recall 0.70
