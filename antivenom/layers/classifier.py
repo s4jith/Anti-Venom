@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 import asyncio
+import threading
 import time
 from typing import Any
+
 from antivenom.core.chunk import Chunk
 from antivenom.core.result import LayerResult
 from antivenom.layers.base import AbstractDetectionLayer
@@ -15,10 +18,13 @@ class ClassifierLayer(AbstractDetectionLayer):
         self._config = config or {}
         self._threshold: float = self._config.get("threshold", 0.5)
         self._classifier: DistilBertClassifier | None = None
+        self._load_lock = threading.Lock()
 
     def _get_classifier(self) -> DistilBertClassifier:
         if self._classifier is None:
-            self._classifier = DistilBertClassifier()
+            with self._load_lock:
+                if self._classifier is None:
+                    self._classifier = DistilBertClassifier()
         return self._classifier
 
     async def scan(self, chunk: Chunk) -> LayerResult:

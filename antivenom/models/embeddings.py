@@ -1,26 +1,36 @@
 from __future__ import annotations
+
 import importlib.util
-import numpy as np
+import threading
 from typing import Any
+
+import numpy as np
 
 
 class EmbeddingModel:
-    """Lazy-loading sentence-transformers wrapper. Requires [semantic] extra."""
+    """Lazy-loading sentence-transformers wrapper. Requires [semantic] extra.
+
+    Thread-safe: concurrent first-time callers will not double-load the model.
+    """
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
         self._model_name = model_name
         self._model: Any = None
+        self._load_lock = threading.Lock()
 
     def _load(self) -> None:
         if self._model is not None:
             return
-        if importlib.util.find_spec("sentence_transformers") is None:
-            raise ImportError(
-                "sentence-transformers is required for the semantic layer. "
-                "Install with: pip install antivenom[semantic]"
-            )
-        from sentence_transformers import SentenceTransformer  # type: ignore[import]
-        self._model = SentenceTransformer(self._model_name)
+        with self._load_lock:
+            if self._model is not None:
+                return
+            if importlib.util.find_spec("sentence_transformers") is None:
+                raise ImportError(
+                    "sentence-transformers is required for the semantic layer. "
+                    "Install with: pip install antivenom[semantic]"
+                )
+            from sentence_transformers import SentenceTransformer  # type: ignore[import]
+            self._model = SentenceTransformer(self._model_name)
 
     def embed(self, text: str) -> np.ndarray:
         self._load()

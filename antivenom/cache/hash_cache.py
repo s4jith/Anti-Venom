@@ -1,9 +1,10 @@
 from __future__ import annotations
+
 import hashlib
-import json
+import threading
 from typing import Any
 
-from antivenom.core.result import ScanResult, LayerResult, Severity
+from antivenom.core.result import LayerResult, ScanResult, Severity
 
 
 def _serialize_result(result: ScanResult) -> dict:
@@ -60,17 +61,21 @@ class HashCache:
         self._ttl = ttl
         self._hits = 0
         self._misses = 0
+        self._stats_lock = threading.Lock()
 
     @staticmethod
     def _key(text: str) -> str:
-        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+        return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
 
     def get(self, text: str) -> ScanResult | None:
         data = self._backend.get(self._key(text))
+        with self._stats_lock:
+            if data is None:
+                self._misses += 1
+            else:
+                self._hits += 1
         if data is None:
-            self._misses += 1
             return None
-        self._hits += 1
         return _deserialize_result(data)
 
     def set(self, text: str, result: ScanResult) -> None:
@@ -78,10 +83,12 @@ class HashCache:
 
     @property
     def hit_rate(self) -> float:
-        total = self._hits + self._misses
-        return self._hits / total if total > 0 else 0.0
+        with self._stats_lock:
+            total = self._hits + self._misses
+            return self._hits / total if total > 0 else 0.0
 
     def clear(self) -> None:
         self._backend.clear()
-        self._hits = 0
-        self._misses = 0
+        with self._stats_lock:
+            self._hits = 0
+            self._misses = 0

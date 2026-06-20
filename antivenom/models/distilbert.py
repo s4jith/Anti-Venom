@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import importlib.util
 import os
+import threading
 from typing import Any
 
 
@@ -9,6 +11,7 @@ class DistilBertClassifier:
         self._model_name_or_path = model_name_or_path
         self._tokenizer: Any = None
         self._model: Any = None
+        self._load_lock = threading.Lock()
 
     @classmethod
     def is_available(cls) -> bool:
@@ -20,22 +23,30 @@ class DistilBertClassifier:
     def lazy_load(self) -> None:
         if self._model is not None:
             return
-        if importlib.util.find_spec("transformers") is None:
-            raise ImportError(
-                "transformers is required for ClassifierLayer. "
-                "Install with: pip install antivenom[classifier]"
+        with self._load_lock:
+            if self._model is not None:
+                return
+            if importlib.util.find_spec("transformers") is None:
+                raise ImportError(
+                    "transformers is required for ClassifierLayer. "
+                    "Install with: pip install antivenom[classifier]"
+                )
+            if importlib.util.find_spec("torch") is None:
+                raise ImportError(
+                    "torch is required for ClassifierLayer. "
+                    "Install with: pip install antivenom[classifier]"
+                )
+            from transformers import (  # type: ignore[import]
+                AutoModelForSequenceClassification,
+                AutoTokenizer,
             )
-        if importlib.util.find_spec("torch") is None:
-            raise ImportError(
-                "torch is required for ClassifierLayer. "
-                "Install with: pip install antivenom[classifier]"
-            )
-        from transformers import AutoTokenizer, AutoModelForSequenceClassification  # type: ignore[import]
-        # Env var override allows pointing at a fine-tuned checkpoint
-        checkpoint = os.environ.get("ANTIVENOM_CLASSIFIER_MODEL", self._model_name_or_path)
-        self._tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-        self._model = AutoModelForSequenceClassification.from_pretrained(checkpoint)
-        self._model.eval()
+            # Env var override allows pointing at a fine-tuned checkpoint
+            checkpoint = os.environ.get("ANTIVENOM_CLASSIFIER_MODEL", self._model_name_or_path)
+            tokenizer = AutoTokenizer.from_pretrained(checkpoint)
+            model = AutoModelForSequenceClassification.from_pretrained(checkpoint)
+            model.eval()
+            self._tokenizer = tokenizer
+            self._model = model
 
     def predict(self, text: str) -> tuple[bool, float]:
         import torch  # type: ignore[import]

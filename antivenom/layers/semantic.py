@@ -1,8 +1,12 @@
 from __future__ import annotations
+
 import importlib.util
+import threading
 import time
 from typing import Any
+
 import numpy as np
+
 from antivenom.core.chunk import Chunk
 from antivenom.core.result import LayerResult
 from antivenom.layers.base import AbstractDetectionLayer
@@ -32,19 +36,24 @@ class SemanticLayer(AbstractDetectionLayer):
         self._embedder: Any = None
         self._centroids: np.ndarray | None = None
         self._labels: list[str] | None = None
+        self._ready_lock = threading.Lock()
 
     def _ensure_ready(self) -> None:
         if self._embedder is not None:
             return
-        if importlib.util.find_spec("sentence_transformers") is None:
-            raise ImportError(
-                "sentence-transformers is required for SemanticLayer. "
-                "Install with: pip install antivenom[semantic]"
-            )
-        from antivenom.models.embeddings import EmbeddingModel
-        from antivenom.models.malicious_corpus import get_centroids
-        self._embedder = EmbeddingModel(self._model_name)
-        self._centroids, self._labels = get_centroids(self._embedder)
+        with self._ready_lock:
+            if self._embedder is not None:
+                return
+            if importlib.util.find_spec("sentence_transformers") is None:
+                raise ImportError(
+                    "sentence-transformers is required for SemanticLayer. "
+                    "Install with: pip install antivenom[semantic]"
+                )
+            from antivenom.models.embeddings import EmbeddingModel
+            from antivenom.models.malicious_corpus import get_centroids
+            embedder = EmbeddingModel(self._model_name)
+            self._centroids, self._labels = get_centroids(embedder)
+            self._embedder = embedder
 
     async def scan(self, chunk: Chunk) -> LayerResult:
         start = time.perf_counter()
