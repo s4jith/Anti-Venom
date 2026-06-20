@@ -1,12 +1,12 @@
 # Anti-Venom
 
-**99.7% precision · 74% recall · ~1ms median latency** — pre-embedding RAG corpus poisoning detector.
+**99.8% precision · 98% recall · F1 0.989** — pre-embedding RAG corpus poisoning detector.
 
 ```bash
 pip install antivenom
 ```
 
-> **v0.3.1 released** — production-hardened for multi-user use: per-layer fault isolation, thread-safe audit/quarantine/cache, event-loop-safe sync API, fuzz-tested against pathological inputs. 145 tests, ruff + mypy clean.
+> **v0.3.2 released** — the DistilBERT classifier is trained and validated: recall jumps **74% → 98%** on a held-out corpus-poisoning benchmark. LLM Judge validated against real Ollama (mistral/gemma3). 162 tests, ruff + mypy clean.
 
 ---
 
@@ -207,47 +207,58 @@ config = ScannerConfig(
 
 If Ollama is not running, the LLM Judge layer silently skips — the rest of the pipeline continues normally.
 
-## Training the Classifier (v0.3)
+## Training the Classifier (v0.3.2)
+
+The classifier ships **untrained** — you supply a fine-tuned checkpoint. Training
+takes ~1 minute on a GPU:
 
 ```bash
-# 1. Build training dataset
-python scripts/build_classifier_dataset.py --builtin-only
+pip install antivenom[train]
 
-# 2. Fine-tune DistilBERT (requires antivenom[classifier])
+# 1. Build a balanced dataset from real injection corpora
+#    (jackhhao/jailbreak-classification + deepset/prompt-injections)
+python scripts/build_classifier_dataset.py        # ~1,858 samples, 80/10/10 split
+
+# 2. Fine-tune DistilBERT
 python scripts/train_classifier.py \
     --dataset-dir tests/benchmarks/datasets/classifier/ \
     --output-dir models/antivenom-classifier/ \
     --epochs 3
 
-# 3. Point scanner at your checkpoint
+# 3. Point the scanner at your checkpoint
 export ANTIVENOM_CLASSIFIER_MODEL=models/antivenom-classifier/
 antivenom scan corpus.txt
 ```
+
+The classifier only activates when `ANTIVENOM_CLASSIFIER_MODEL` (or a `model` path
+in `layer_configs["classifier"]`) is set — the base `distilbert-base-uncased` is
+never used for detection.
 
 ---
 
 ## Benchmark Results
 
-### v0.2
+Tested against 500 corpus-poisoning attacks + 50 benign documents. The classifier
+was trained on **different** data (jailbreak/injection corpora) and evaluated here
+on held-out corpus-poisoning attacks — an honest generalization test.
 
-Tested against 500 curated corpus-poisoning attacks + 50 benign document samples:
+| Metric | Regex layers only | **+ trained classifier (v0.3.2)** |
+|---|---|---|
+| Precision | 99.7% | **99.8%** |
+| Recall | 74.0% | **98.0%** |
+| F1 Score | 85.0% | **98.9%** |
+| False negatives | 130 / 500 | **10 / 500** |
+| Latency p50 | 1.1ms | 30ms (GPU classifier) |
 
-| Metric | Value |
-|---|---|
-| Precision | **99.7%** |
-| Recall | **74.0%** |
-| F1 Score | **85.0%** |
-| False Positive Rate | 2.0% |
-| Latency p50 | **0.4ms** |
-| Latency p95 | 1.1ms |
-
-> Install `antivenom[semantic]` to activate the semantic layer and push recall above 90%.
+Classifier held-out test set (its own distribution): **P 98.0% · R 95.1% · F1 0.966**.
 
 Run your own:
 ```bash
 python scripts/build_benchmark_dataset.py --builtin-only
-python -m antivenom.benchmark
+ANTIVENOM_CLASSIFIER_MODEL=models/antivenom-classifier python -m antivenom.benchmark
 ```
+
+> Without the classifier, install `antivenom[semantic]` to push recall toward 90% via the semantic layer. The classifier (above) is the strongest single lever.
 
 ---
 
@@ -357,6 +368,7 @@ rules = load_rules("my_rules.yaml")   # auto-detects JSON or YAML
 | **v0.2** | Semantic layer, CrossChunk detection, LlamaIndex, webhook proxy, hash cache, YAML rules | Released |
 | **v0.3** | DistilBERT classifier, Haystack, LLM Judge (Ollama), Redis cache, training scripts | Released |
 | **v0.3.1** | Multi-user hardening: fault isolation, thread-safety, loop-safe API, fuzz suite | Released |
+| **v0.3.2** | Trained DistilBERT (recall 74%→98%), validated LLM Judge vs real Ollama | Released |
 
 ---
 
