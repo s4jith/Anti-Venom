@@ -6,7 +6,7 @@
 pip install antivenom
 ```
 
-> **v0.2 released** — Semantic layer, CrossChunk detection, LlamaIndex, webhook proxy, hash cache, YAML rules.
+> **v0.3 released** — DistilBERT classifier, Haystack integration, LLM Judge (Ollama), Redis cache, training scripts.
 
 ---
 
@@ -47,11 +47,14 @@ pip install antivenom                    # core (no ML deps)
 pip install antivenom[langchain]         # + LangChain integration
 pip install antivenom[semantic]          # + semantic layer (sentence-transformers)
 pip install antivenom[llamaindex]        # + LlamaIndex integration
+pip install antivenom[haystack]          # + Haystack integration
+pip install antivenom[classifier]        # + DistilBERT classifier (transformers + torch)
 pip install antivenom[serve]             # + webhook proxy (FastAPI)
+pip install antivenom[redis]             # + Redis cache backend
 pip install antivenom[all]               # everything
 ```
 
-**Requirements**: Python >= 3.10. No model downloads required for core install. Semantic layer downloads `all-MiniLM-L6-v2` (~22MB) on first use.
+**Requirements**: Python >= 3.10. No model downloads required for core install. Semantic layer downloads `all-MiniLM-L6-v2` (~22MB) on first use. Classifier requires a fine-tuned checkpoint (see `scripts/train_classifier.py`).
 
 ---
 
@@ -162,6 +165,65 @@ antivenom audit release <id>           # release after review
 
 **Split-payload attacks (v0.2)** — Injection deliberately split across adjacent chunks to evade single-chunk detection.
 
+**DistilBERT classifier (v0.3)** — Fine-tuned sequence classification model. Catches paraphrased and novel attacks that pattern and semantic layers miss. Requires `antivenom[classifier]` + a fine-tuned checkpoint. Set `ANTIVENOM_CLASSIFIER_MODEL=<path>` to load your checkpoint; falls back to base `distilbert-base-uncased` otherwise.
+
+**LLM Judge (v0.3)** — Optional SLOW layer that asks a locally-running Ollama LLM to judge each chunk. Zero false positives: only fires when both `is_injection=true` AND `confidence >= 0.8`. Skips silently if Ollama is not running — pipeline never blocks.
+
+---
+
+## Haystack Integration (v0.3)
+
+```python
+from haystack import Pipeline
+from haystack.components.writers import DocumentWriter
+from antivenom.integrations.haystack import AntiVenomComponent
+
+pipeline = Pipeline()
+pipeline.add_component("cleaner", AntiVenomComponent(on_detection="filter"))
+pipeline.add_component("writer", DocumentWriter(document_store=store))
+pipeline.connect("cleaner.documents", "writer.documents")
+
+pipeline.run({"cleaner": {"documents": raw_docs}})
+```
+
+## LLM Judge (v0.3)
+
+Requires [Ollama](https://ollama.ai) running locally with any model pulled:
+
+```bash
+ollama pull llama3          # download model once
+ollama serve                # start API server (default: localhost:11434)
+```
+
+Configure via `layer_configs`:
+
+```python
+config = ScannerConfig(
+    layer_configs={
+        "llm_judge": {"model": "llama3", "threshold": 0.8, "timeout": 15.0},
+    }
+)
+```
+
+If Ollama is not running, the LLM Judge layer silently skips — the rest of the pipeline continues normally.
+
+## Training the Classifier (v0.3)
+
+```bash
+# 1. Build training dataset
+python scripts/build_classifier_dataset.py --builtin-only
+
+# 2. Fine-tune DistilBERT (requires antivenom[classifier])
+python scripts/train_classifier.py \
+    --dataset-dir tests/benchmarks/datasets/classifier/ \
+    --output-dir models/antivenom-classifier/ \
+    --epochs 3
+
+# 3. Point scanner at your checkpoint
+export ANTIVENOM_CLASSIFIER_MODEL=models/antivenom-classifier/
+antivenom scan corpus.txt
+```
+
 ---
 
 ## Benchmark Results
@@ -265,7 +327,7 @@ rules = load_rules("my_rules.yaml")   # auto-detects JSON or YAML
 |---|---|---|
 | **v0.1** | Pattern + Structural + Canary layers, LangChain, CLI, SQLite audit | Released |
 | **v0.2** | Semantic layer, CrossChunk detection, LlamaIndex, webhook proxy, hash cache, YAML rules | Released |
-| **v0.3** | DistilBERT classifier, Haystack, LLM Judge (Ollama), HuggingFace model card | In progress |
+| **v0.3** | DistilBERT classifier, Haystack, LLM Judge (Ollama), Redis cache, training scripts | Released |
 
 ---
 
