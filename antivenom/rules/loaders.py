@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import json
 import re
 from pathlib import Path
+
 from antivenom.rules.base_rule import BaseRule
 
 
@@ -36,8 +38,8 @@ def load_json_rules(path: str | Path) -> list[BaseRule]:
 def load_yaml_rules(path: str | Path) -> list[BaseRule]:
     try:
         import yaml  # type: ignore[import]
-    except ImportError:
-        raise ImportError("PyYAML is required to load YAML rules: pip install pyyaml")
+    except ImportError as err:
+        raise ImportError("PyYAML is required to load YAML rules: pip install pyyaml") from err
     data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     return [dict_to_rule(entry) for entry in data]
 

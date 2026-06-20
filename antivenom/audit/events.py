@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -16,7 +17,7 @@ class AuditEvent:
     metadata: dict = field(default_factory=dict)
 
     @classmethod
-    def now(cls, **kwargs) -> "AuditEvent":
+    def now(cls, **kwargs) -> AuditEvent:
         return cls(
             timestamp=datetime.now(timezone.utc).isoformat(),
             **kwargs,

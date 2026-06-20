@@ -1,6 +1,8 @@
 """Built-in adversarial phrase rules loaded into RuleRegistry."""
 from __future__ import annotations
+
 import re
+
 from antivenom.rules.base_rule import BaseRule
 
 

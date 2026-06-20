@@ -1,7 +1,8 @@
 from __future__ import annotations
-import asyncio
+
 import warnings
-from typing import Any, Literal, Sequence
+from collections.abc import Sequence
+from typing import Any, Literal
 
 from antivenom.core.chunk import Chunk
 from antivenom.core.config import ScannerConfig

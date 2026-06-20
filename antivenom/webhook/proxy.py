@@ -6,12 +6,13 @@ Usage:
 Then point your embedding URL at http://localhost:8765 — no other code changes needed.
 """
 from __future__ import annotations
+
 import json
 from typing import Any
 
 try:
-    from fastapi import FastAPI, Request, Response  # type: ignore[import]
     import httpx  # type: ignore[import]
+    from fastapi import FastAPI, Request, Response  # type: ignore[import]
     _FASTAPI_AVAILABLE = True
 except ImportError:
     _FASTAPI_AVAILABLE = False

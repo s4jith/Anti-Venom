@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -29,7 +30,7 @@ class ScanResult:
     from_cache: bool = False
 
     @classmethod
-    def clean(cls, chunk_id: str, layer_results: list[LayerResult] | None = None, duration_ms: float = 0.0) -> "ScanResult":
+    def clean(cls, chunk_id: str, layer_results: list[LayerResult] | None = None, duration_ms: float = 0.0) -> ScanResult:
         return cls(
             chunk_id=chunk_id,
             is_poisoned=False,
@@ -40,7 +41,7 @@ class ScanResult:
         )
 
     @classmethod
-    def poisoned(cls, chunk_id: str, confidence: float, layer_results: list[LayerResult], duration_ms: float = 0.0) -> "ScanResult":
+    def poisoned(cls, chunk_id: str, confidence: float, layer_results: list[LayerResult], duration_ms: float = 0.0) -> ScanResult:
         severity = Severity.MALICIOUS if confidence >= 0.75 else Severity.SUSPICIOUS
         return cls(
             chunk_id=chunk_id,

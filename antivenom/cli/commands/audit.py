@@ -1,10 +1,9 @@
 from __future__ import annotations
-from typing import Optional
 
 import typer
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
 
 app = typer.Typer(help="Manage quarantined chunks and audit logs.")
 console = Console()
@@ -19,7 +18,7 @@ def _get_store(db_path: str = "antivenom_audit.db"):
 def audit_list(
     limit: int = typer.Option(50, "--limit", "-n", help="Max entries to show."),
     db_path: str = typer.Option("antivenom_audit.db", "--db", help="Path to audit database."),
-    severity: Optional[str] = typer.Option(None, "--severity", "-s", help="Filter: suspicious|malicious"),
+    severity: str | None = typer.Option(None, "--severity", "-s", help="Filter: suspicious|malicious"),
 ) -> None:
     """List quarantined chunks."""
     store = _get_store(db_path)
@@ -77,11 +76,11 @@ def audit_show(
     console.print(f"[bold]Severity:[/bold]      [red]{entry.severity}[/red]")
     console.print(f"[bold]Confidence:[/bold]    {entry.confidence:.2f}")
     console.print(f"[bold]Quarantined:[/bold]   {entry.quarantined_at}")
-    console.print(f"\n[bold]Chunk text (first 500 chars):[/bold]")
+    console.print("\n[bold]Chunk text (first 500 chars):[/bold]")
     console.print(f"[dim]{entry.chunk_text[:500]}[/dim]")
     evidence = json.loads(entry.evidence) if isinstance(entry.evidence, str) else entry.evidence
     if evidence:
-        console.print(f"\n[bold]Evidence:[/bold]")
+        console.print("\n[bold]Evidence:[/bold]")
         for e in evidence:
             console.print(f"  • {e}")
 

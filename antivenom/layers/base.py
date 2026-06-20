@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
+
 from antivenom.core.chunk import Chunk
 from antivenom.core.result import LayerResult
 

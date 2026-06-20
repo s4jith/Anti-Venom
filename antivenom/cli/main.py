@@ -1,5 +1,6 @@
 import typer
-from antivenom.cli.commands import scan, audit, serve
+
+from antivenom.cli.commands import audit, scan, serve
 
 app = typer.Typer(
     name="antivenom",

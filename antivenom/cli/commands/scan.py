@@ -1,18 +1,18 @@
 from __future__ import annotations
+
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
 
-from antivenom.core.scanner import AntiVenomScanner
-from antivenom.core.config import ScannerConfig
 from antivenom.core.chunk import Chunk
+from antivenom.core.config import ScannerConfig
 from antivenom.core.result import Severity
+from antivenom.core.scanner import AntiVenomScanner
 
 app = typer.Typer(help="Scan files or text for prompt injection.")
 console = Console(highlight=False)
@@ -32,12 +32,12 @@ def _make_bar(confidence: float, width: int = 20) -> str:
 
 @app.callback(invoke_without_command=True)
 def scan_command(
-    input_path: Optional[Path] = typer.Argument(None, help="File to scan. Use '-' for stdin."),
+    input_path: Path | None = typer.Argument(None, help="File to scan. Use '-' for stdin."),
     threshold: float = typer.Option(0.7, "--threshold", "-t", help="Confidence threshold (0.0-1.0)."),
     chunk_size: int = typer.Option(500, "--chunk-size", help="Auto-chunk text at this character size."),
     format: str = typer.Option("text", "--format", "-f", help="Output format: text|json."),
     no_quarantine: bool = typer.Option(False, "--no-quarantine", help="Skip quarantine on detection."),
-    layers: Optional[str] = typer.Option(None, "--layers", help="Comma-separated layer names to enable."),
+    layers: str | None = typer.Option(None, "--layers", help="Comma-separated layer names to enable."),
 ) -> None:
     """Scan a file or stdin for adversarial prompt injections."""
     if input_path is None or str(input_path) == "-":
@@ -50,7 +50,7 @@ def scan_command(
         text = input_path.read_text(encoding="utf-8", errors="replace")
         source = str(input_path)
 
-    enabled = [l.strip() for l in layers.split(",")] if layers else None
+    enabled = [name.strip() for name in layers.split(",")] if layers else None
     config = ScannerConfig(
         confidence_threshold=threshold,
         quarantine_on_detection=not no_quarantine,

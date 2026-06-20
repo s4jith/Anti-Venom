@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import json
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
+
 from antivenom.rules.base_rule import BaseRule
 
 
@@ -30,6 +32,6 @@ class RuleRegistry:
             self.register(dict_to_rule(entry))
 
     @classmethod
-    def get_default(cls) -> "RuleRegistry":
+    def get_default(cls) -> RuleRegistry:
         registry = cls()
         return registry

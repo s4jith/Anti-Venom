@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import re
 import time
 from typing import Any
+
 from antivenom.core.chunk import Chunk
 from antivenom.core.result import LayerResult
 from antivenom.layers.base import AbstractDetectionLayer

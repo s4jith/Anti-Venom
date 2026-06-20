@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import Any
 
 from antivenom.core.chunk import Chunk
@@ -6,9 +7,7 @@ from antivenom.core.config import ScannerConfig
 from antivenom.core.scanner import AntiVenomScanner
 
 try:
-    from llama_index.core.ingestion import IngestionPipeline  # type: ignore[import]
     from llama_index.core.schema import BaseNode, TextNode  # type: ignore[import]
-    from llama_index.core.bridge.pydantic import Field  # type: ignore[import]
     _LLAMA_AVAILABLE = True
 except ImportError:
     _LLAMA_AVAILABLE = False
@@ -40,7 +39,6 @@ class AntiVenomIngestionNode:
         return self._process(nodes)
 
     async def acall(self, nodes: list[Any], **kwargs: Any) -> list[Any]:
-        import asyncio
         chunks = [
             Chunk(
                 text=n.get_content() if hasattr(n, "get_content") else str(n),

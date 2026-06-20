@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import Any, Optional, Sequence
+
+from typing import Any
 
 from antivenom.core.chunk import Chunk
 from antivenom.core.config import ScannerConfig
@@ -45,7 +46,7 @@ class AntiVenomNodePostProcessor(BaseNodePostprocessor):  # type: ignore[misc]
     def _postprocess_nodes(
         self,
         nodes: list[NodeWithScore],
-        query_bundle: Optional[QueryBundle] = None,
+        query_bundle: QueryBundle | None = None,
     ) -> list[NodeWithScore]:
         if not nodes:
             return nodes

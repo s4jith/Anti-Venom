@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import Optional
 
 import typer
 
@@ -12,7 +11,7 @@ def serve_command(
     host: str = typer.Option("0.0.0.0", "--host", help="Host to bind."),
     port: int = typer.Option(8765, "--port", "-p", help="Port to bind."),
     workers: int = typer.Option(1, "--workers", help="Number of uvicorn workers."),
-    auth_header: Optional[str] = typer.Option(None, "--auth-header", help="Authorization header to forward upstream."),
+    auth_header: str | None = typer.Option(None, "--auth-header", help="Authorization header to forward upstream."),
     threshold: float = typer.Option(0.7, "--threshold", "-t"),
     no_quarantine: bool = typer.Option(False, "--no-quarantine"),
 ) -> None:
@@ -21,10 +20,10 @@ def serve_command(
         import uvicorn  # type: ignore[import]
     except ImportError:
         typer.echo("uvicorn is required: pip install antivenom[serve]", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
-    from antivenom.webhook.proxy import create_proxy_app
     from antivenom.core.config import ScannerConfig
+    from antivenom.webhook.proxy import create_proxy_app
 
     config = ScannerConfig(
         confidence_threshold=threshold,
