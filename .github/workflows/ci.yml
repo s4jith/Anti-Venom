@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          uv pip install -e ".[langchain,dev]"
+
+      - name: Lint
+        run: uv run ruff check antivenom/
+
+      - name: Type check
+        run: uv run mypy antivenom/ --ignore-missing-imports
+
+      - name: Run unit tests
+        run: uv run pytest tests/unit/ -q --tb=short
+
+      - name: Run integration tests
+        run: uv run pytest tests/integration/ -q --tb=short
+
+      - name: Run benchmark (if dataset exists)
+        # v0.1 regex-only: 0.70 recall floor. Target >=0.90 after semantic layer (v0.2).
+        run: uv run python -m antivenom.benchmark --fail-below-recall 0.70 || true

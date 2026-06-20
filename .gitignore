@@ -1,0 +1,82 @@
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+MANIFEST
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+*.env
+
+# Runtime / audit artifacts
+antivenom_audit.db
+antivenom_audit.jsonl
+audit.jsonl
+audit.db
+*.db
+*.jsonl
+
+# Benchmark datasets (generated, not committed)
+tests/benchmarks/datasets/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+coverage.xml
+*.cover
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ruff
+.ruff_cache/
+
+# uv
+.uv/
+uv.lock
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Distribution
+*.tar.gz
+*.zip
+
+# Logs
+*.log
+logs/
+
+# Model checkpoints (large binary files for v0.3)
+models/checkpoints/
+*.bin
+*.safetensors
+*.pt
+*.pth
