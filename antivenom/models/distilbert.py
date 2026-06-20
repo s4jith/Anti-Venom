@@ -1,0 +1,58 @@
+from __future__ import annotations
+import importlib.util
+import os
+from typing import Any
+
+
+class DistilBertClassifier:
+    def __init__(self, model_name_or_path: str = "distilbert-base-uncased") -> None:
+        self._model_name_or_path = model_name_or_path
+        self._tokenizer: Any = None
+        self._model: Any = None
+
+    @classmethod
+    def is_available(cls) -> bool:
+        return (
+            importlib.util.find_spec("transformers") is not None
+            and importlib.util.find_spec("torch") is not None
+        )
+
+    def lazy_load(self) -> None:
+        if self._model is not None:
+            return
+        if importlib.util.find_spec("transformers") is None:
+            raise ImportError(
+                "transformers is required for ClassifierLayer. "
+                "Install with: pip install antivenom[classifier]"
+            )
+        if importlib.util.find_spec("torch") is None:
+            raise ImportError(
+                "torch is required for ClassifierLayer. "
+                "Install with: pip install antivenom[classifier]"
+            )
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification  # type: ignore[import]
+        # Env var override allows pointing at a fine-tuned checkpoint
+        checkpoint = os.environ.get("ANTIVENOM_CLASSIFIER_MODEL", self._model_name_or_path)
+        self._tokenizer = AutoTokenizer.from_pretrained(checkpoint)
+        self._model = AutoModelForSequenceClassification.from_pretrained(checkpoint)
+        self._model.eval()
+
+    def predict(self, text: str) -> tuple[bool, float]:
+        import torch  # type: ignore[import]
+        self.lazy_load()
+        inputs = self._tokenizer(
+            text[:512],
+            return_tensors="pt",
+            truncation=True,
+            max_length=512,
+            padding=True,
+        )
+        with torch.no_grad():
+            logits = self._model(**inputs).logits
+        # sigmoid over logit for class 1 (injection)
+        if logits.shape[-1] == 1:
+            # binary single-output head
+            prob = float(torch.sigmoid(logits[0, 0]).item())
+        else:
+            prob = float(torch.sigmoid(logits[0, 1]).item())
+        return prob >= 0.5, prob
