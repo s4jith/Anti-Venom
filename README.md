@@ -1,12 +1,12 @@
 # Anti-Venom
 
-**99.7% precision · 74% recall · 0.4ms median latency** — pre-embedding RAG corpus poisoning detector.
+**99.7% precision · 74% recall · ~1ms median latency** — pre-embedding RAG corpus poisoning detector.
 
 ```bash
 pip install antivenom
 ```
 
-> **v0.3 released** — DistilBERT classifier, Haystack integration, LLM Judge (Ollama), Redis cache, training scripts.
+> **v0.3.1 released** — production-hardened for multi-user use: per-layer fault isolation, thread-safe audit/quarantine/cache, event-loop-safe sync API, fuzz-tested against pathological inputs. 145 tests, ruff + mypy clean.
 
 ---
 
@@ -276,6 +276,34 @@ scanner = AntiVenomScanner(config=config)
 
 ---
 
+## Concurrency & Production Use (v0.3.1)
+
+A single `AntiVenomScanner` is **safe to share across threads and concurrent
+async tasks** — create one and reuse it for the lifetime of your service.
+
+```python
+scanner = AntiVenomScanner(config=config)   # build once, share everywhere
+
+# Safe from many worker threads at once:
+with ThreadPoolExecutor(max_workers=32) as pool:
+    results = list(pool.map(scanner.scan_text, documents))
+
+# Safe to call the sync API from inside an async web handler (FastAPI/Jupyter):
+@app.post("/ingest")
+async def ingest(doc: str):
+    return scanner.scan_text(doc)   # auto-offloads, won't crash the event loop
+
+# Release resources when done (or use it as a context manager):
+scanner.close()
+```
+
+Guarantees:
+- **A scan never raises** on any input or layer fault — a failing/unavailable layer degrades to a non-triggered result with the error recorded in evidence.
+- **Thread-safe** audit log, quarantine store, and caches (WAL + locks) — no interleaved writes or "database is locked" under load.
+- **Bounded latency** — regex layers cap scan length; the optional Ollama LLM Judge is strictly opt-in so it never adds network latency by default.
+
+---
+
 ## Audit & Quarantine
 
 ```python
@@ -328,6 +356,7 @@ rules = load_rules("my_rules.yaml")   # auto-detects JSON or YAML
 | **v0.1** | Pattern + Structural + Canary layers, LangChain, CLI, SQLite audit | Released |
 | **v0.2** | Semantic layer, CrossChunk detection, LlamaIndex, webhook proxy, hash cache, YAML rules | Released |
 | **v0.3** | DistilBERT classifier, Haystack, LLM Judge (Ollama), Redis cache, training scripts | Released |
+| **v0.3.1** | Multi-user hardening: fault isolation, thread-safety, loop-safe API, fuzz suite | Released |
 
 ---
 
