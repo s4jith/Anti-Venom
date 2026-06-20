@@ -74,8 +74,11 @@ uv.lock
 *.log
 logs/
 
-# Model checkpoints (large binary files for v0.3)
-models/checkpoints/
+# Model checkpoints and trained models (large binary files)
+# Anchored to repo root so it does NOT match the antivenom/models/ source package.
+/models/
+# Generated training/benchmark datasets
+/tests/benchmarks/datasets/
 *.bin
 *.safetensors
 *.pt

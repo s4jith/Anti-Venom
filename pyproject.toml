@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "antivenom"
-version = "0.3.1"
+version = "0.3.2"
 description = "RAG Corpus Poisoning Detector — scans document chunks for adversarial prompt injections before vector DB storage"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -32,6 +32,7 @@ dependencies = [
 semantic = ["sentence-transformers>=3.0"]
 structural-nlp = ["spacy>=3.7"]
 classifier = ["transformers>=4.40", "torch>=2.1"]
+train = ["transformers>=4.40", "torch>=2.1", "datasets>=2.19", "scikit-learn>=1.3", "accelerate>=0.30"]
 serve = ["fastapi>=0.111", "uvicorn[standard]>=0.30", "httpx>=0.27"]
 langchain = ["langchain-core>=0.2"]
 llamaindex = ["llama-index-core>=0.10"]
