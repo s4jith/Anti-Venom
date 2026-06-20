@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import re
 import time
 from typing import Any
+
 from antivenom.core.chunk import Chunk
 from antivenom.core.result import LayerResult
 from antivenom.layers.base import AbstractDetectionLayer
@@ -17,6 +19,9 @@ _IMPERATIVE_VERBS = frozenset({
 })
 
 _WORD_RE = re.compile(r"\b([a-z]+)\b", re.IGNORECASE)
+
+# Cap scan length to bound worst-case time on pathological/huge inputs.
+_MAX_SCAN_CHARS = 100_000
 
 
 def _imperative_density(text: str) -> tuple[float, list[str]]:
@@ -59,7 +64,7 @@ class StructuralLayer(AbstractDetectionLayer):
         return self._scan_regex(chunk, start)
 
     def _scan_regex(self, chunk: Chunk, start: float) -> LayerResult:
-        density, hits = _imperative_density(chunk.text)
+        density, hits = _imperative_density(chunk.text[:_MAX_SCAN_CHARS])
         triggered = density >= self._threshold
         confidence = min(density / self._threshold * 0.7, 0.85) if triggered else 0.0
         evidence = [f"imperative density={density:.3f} (threshold={self._threshold}), verbs: {', '.join(hits[:8])}"] if triggered else []

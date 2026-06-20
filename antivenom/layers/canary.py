@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import re
 import time
 from typing import Any
+
 from antivenom.core.chunk import Chunk
 from antivenom.core.result import LayerResult
 from antivenom.layers.base import AbstractDetectionLayer
@@ -31,6 +33,9 @@ _COMPILED_EXFIL: list[tuple[re.Pattern[str], float]] = [
     for p, w in _EXFIL_PATTERNS
 ]
 
+# Cap regex scan length to bound worst-case time on pathological/huge inputs.
+_MAX_SCAN_CHARS = 100_000
+
 
 class CanaryLayer(AbstractDetectionLayer):
     """Layer 3 (FAST): detects exfiltration attempts and secret-echo instructions."""
@@ -42,7 +47,7 @@ class CanaryLayer(AbstractDetectionLayer):
 
     async def scan(self, chunk: Chunk) -> LayerResult:
         start = time.perf_counter()
-        text = chunk.text
+        text = chunk.text[:_MAX_SCAN_CHARS]
         matched: list[tuple[str, float]] = []
 
         for pattern, weight in _COMPILED_EXFIL:

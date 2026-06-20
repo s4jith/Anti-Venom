@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import re
 import time
 from typing import Any
+
 from antivenom.core.chunk import Chunk
 from antivenom.core.result import LayerResult
 from antivenom.layers.base import AbstractDetectionLayer
@@ -43,6 +45,10 @@ _COMPILED: list[tuple[re.Pattern[str], float]] = [
     for p, weight in _PHRASES
 ]
 
+# Cap regex scan length to bound worst-case time on pathological/huge inputs.
+# RAG chunks are typically a few hundred to a few thousand characters.
+_MAX_SCAN_CHARS = 100_000
+
 
 class PatternLayer(AbstractDetectionLayer):
     """Layer 1 (FAST): regex/phrase matching against known injection patterns."""
@@ -54,7 +60,7 @@ class PatternLayer(AbstractDetectionLayer):
 
     async def scan(self, chunk: Chunk) -> LayerResult:
         start = time.perf_counter()
-        text = chunk.text
+        text = chunk.text[:_MAX_SCAN_CHARS]
         matched: list[tuple[str, float]] = []
 
         for pattern, weight in _COMPILED:
