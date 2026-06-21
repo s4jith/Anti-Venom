@@ -25,3 +25,6 @@ class ScannerConfig:
     # Hash cache (v0.2)
     cache_enabled: bool = False
     cache_ttl_seconds: int = 3600
+    # Input normalization / evasion resistance (v0.4)
+    normalize_enabled: bool = True
+    normalize_decode_blobs: bool = True
