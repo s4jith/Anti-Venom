@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 
 from antivenom.core.chunk import Chunk
+from antivenom.core.finding import Finding, Technique
 from antivenom.core.result import LayerResult
 from antivenom.layers.base import AbstractDetectionLayer
 
@@ -85,17 +86,20 @@ class SemanticLayer(AbstractDetectionLayer):
         triggered = max_sim >= self._threshold
         confidence = min(max_sim, 0.95) if triggered else max_sim * 0.3
 
-        evidence: list[str] = []
+        findings: list[Finding] = []
         if triggered:
-            evidence.append(
-                f"cosine={max_sim:.3f} (threshold={self._threshold}) "
-                f"family={matched_family}"
-            )
+            findings.append(Finding(
+                technique=Technique.SEMANTIC_ANOMALY,
+                reason=f"semantic similarity to '{matched_family}' attack family "
+                       f"(cosine={max_sim:.3f} >= {self._threshold})",
+                confidence=confidence,
+                layer=self.name,
+            ))
 
         return LayerResult(
             layer_name=self.name,
             triggered=triggered,
             confidence=confidence,
-            evidence=evidence,
+            findings=findings,
             duration_ms=(time.perf_counter() - start) * 1000,
         )

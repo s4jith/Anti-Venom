@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from antivenom.core.chunk import Chunk
+from antivenom.core.finding import Finding, Technique
 from antivenom.core.result import LayerResult
 from antivenom.layers.base import AbstractDetectionLayer
 
@@ -67,12 +68,17 @@ class StructuralLayer(AbstractDetectionLayer):
         density, hits = _imperative_density(chunk.text[:_MAX_SCAN_CHARS])
         triggered = density >= self._threshold
         confidence = min(density / self._threshold * 0.7, 0.85) if triggered else 0.0
-        evidence = [f"imperative density={density:.3f} (threshold={self._threshold}), verbs: {', '.join(hits[:8])}"] if triggered else []
+        findings = [Finding(
+            technique=Technique.STRUCTURAL_ANOMALY,
+            reason=f"high imperative-command density ({density:.3f} >= {self._threshold}); verbs: {', '.join(hits[:8])}",
+            confidence=confidence,
+            layer=self.name,
+        )] if triggered else []
         return LayerResult(
             layer_name=self.name,
             triggered=triggered,
             confidence=confidence,
-            evidence=evidence,
+            findings=findings,
             duration_ms=(time.perf_counter() - start) * 1000,
         )
 
@@ -87,11 +93,16 @@ class StructuralLayer(AbstractDetectionLayer):
         density = imperative_count / total_tokens
         triggered = density >= (self._threshold * 0.6)  # spaCy is more precise
         confidence = min(density / self._threshold * 0.8, 0.88) if triggered else 0.0
-        evidence = [f"spaCy imperative density={density:.3f}, count={imperative_count}/{total_tokens}"] if triggered else []
+        findings = [Finding(
+            technique=Technique.STRUCTURAL_ANOMALY,
+            reason=f"spaCy imperative density={density:.3f}, count={imperative_count}/{total_tokens}",
+            confidence=confidence,
+            layer=self.name,
+        )] if triggered else []
         return LayerResult(
             layer_name=self.name,
             triggered=triggered,
             confidence=confidence,
-            evidence=evidence,
+            findings=findings,
             duration_ms=(time.perf_counter() - start) * 1000,
         )

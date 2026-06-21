@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from antivenom.core.chunk import Chunk
+from antivenom.core.finding import Finding, Technique
 from antivenom.core.result import LayerResult
 from antivenom.layers.base import AbstractDetectionLayer
 
@@ -147,7 +148,12 @@ class LLMJudgeLayer(AbstractDetectionLayer):
             layer_name=self.name,
             triggered=True,
             confidence=confidence,
-            evidence=[reason] if reason else ["LLM flagged as injection"],
+            findings=[Finding(
+                technique=Technique.UNKNOWN,
+                reason=reason or "LLM judge flagged as injection",
+                confidence=confidence,
+                layer=self.name,
+            )],
             duration_ms=(time.perf_counter() - start) * 1000,
         )
 

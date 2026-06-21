@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from antivenom.core.chunk import Chunk
+from antivenom.core.finding import Finding, Technique
 from antivenom.core.result import LayerResult
 from antivenom.layers.base import AbstractDetectionLayer
 
@@ -63,20 +64,26 @@ class CrossChunkLayer(AbstractDetectionLayer):
         return self._scan_boundary(boundary_text, start)
 
     def _scan_boundary(self, boundary_text: str, start: float) -> LayerResult:
-        matched: list[tuple[str, float]] = []
+        findings: list[Finding] = []
         for pattern, weight in _COMPILED_BOUNDARY:
             m = pattern.search(boundary_text)
             if m:
-                matched.append((m.group(0)[:100], weight))
+                span = m.group(0)[:100]
+                findings.append(Finding(
+                    technique=Technique.CROSS_CHUNK,
+                    reason=f"split-payload pattern across chunk boundary: {span!r}",
+                    confidence=weight,
+                    layer=self.name,
+                    matched_span=span,
+                ))
 
-        triggered = len(matched) > 0
-        confidence = max((w for _, w in matched), default=0.0) if triggered else 0.0
-        evidence = [f'boundary: "{phrase}" ({w:.2f})' for phrase, w in matched[:3]]
+        triggered = len(findings) > 0
+        confidence = max((f.confidence for f in findings), default=0.0)
 
         return LayerResult(
             layer_name=self.name,
             triggered=triggered,
             confidence=confidence,
-            evidence=evidence,
+            findings=findings[:3],
             duration_ms=(time.perf_counter() - start) * 1000,
         )

@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from antivenom.core.chunk import Chunk
+from antivenom.core.finding import Finding, Technique
 from antivenom.core.result import LayerResult
 from antivenom.layers.base import AbstractDetectionLayer
 from antivenom.models.distilbert import DistilBertClassifier
@@ -73,14 +74,19 @@ class ClassifierLayer(AbstractDetectionLayer):
         # Cap at 0.95 to leave headroom for the LLM judge layer.
         capped = min(confidence, 0.95)
         triggered = is_injection and confidence >= self._threshold
-        evidence: list[str] = []
+        findings: list[Finding] = []
         if triggered:
-            evidence.append(f"DistilBERT: {confidence:.2%} injection probability")
+            findings.append(Finding(
+                technique=Technique.SEMANTIC_ANOMALY,
+                reason=f"DistilBERT classifier: {confidence:.1%} injection probability",
+                confidence=capped,
+                layer=self.name,
+            ))
 
         return LayerResult(
             layer_name=self.name,
             triggered=triggered,
             confidence=capped if triggered else confidence,
-            evidence=evidence,
+            findings=findings,
             duration_ms=(time.perf_counter() - start) * 1000,
         )
