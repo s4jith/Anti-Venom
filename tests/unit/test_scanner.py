@@ -73,16 +73,15 @@ def _slow_layer_names(scanner: AntiVenomScanner) -> list[str]:
     return [layer.name for layer in scanner._pipeline.slow_layers]
 
 
-def test_llm_judge_is_opt_in_not_default():
-    """LLM Judge calls an external service — it must NOT run under the default
-    (enabled_layers=None) config, or every scan pays a network round-trip."""
+def test_llm_judge_is_never_a_pipeline_layer():
+    """v0.4: the LLM Judge is an explainer/arbiter, never a detection layer — it
+    must not appear in the pipeline under ANY config, so scan() never makes a
+    network call."""
     default_scanner = AntiVenomScanner(config=ScannerConfig(
         audit_log_path=None, db_path=None, quarantine_on_detection=False))
     assert "llm_judge" not in _slow_layer_names(default_scanner)
 
-
-def test_llm_judge_enabled_when_explicitly_requested():
-    opted_in = AntiVenomScanner(config=ScannerConfig(
+    requested = AntiVenomScanner(config=ScannerConfig(
         enabled_layers=["pattern", "llm_judge"],
         audit_log_path=None, db_path=None, quarantine_on_detection=False))
-    assert "llm_judge" in _slow_layer_names(opted_in)
+    assert "llm_judge" not in _slow_layer_names(requested)
