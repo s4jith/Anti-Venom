@@ -4,6 +4,8 @@ import hashlib
 import threading
 from typing import Any
 
+from antivenom.core.finding import Finding
+from antivenom.core.report import RiskReport
 from antivenom.core.result import LayerResult, ScanResult, Severity
 
 
@@ -20,7 +22,8 @@ def _serialize_result(result: ScanResult) -> dict:
                 "layer_name": lr.layer_name,
                 "triggered": lr.triggered,
                 "confidence": lr.confidence,
-                "evidence": lr.evidence,
+                "evidence": lr.evidence,  # kept for backward compatibility
+                "findings": [f.to_dict() for f in lr.findings],
                 "duration_ms": lr.duration_ms,
             }
             for lr in result.layer_results
@@ -29,17 +32,27 @@ def _serialize_result(result: ScanResult) -> dict:
 
 
 def _deserialize_result(data: dict) -> ScanResult:
-    layer_results = [
-        LayerResult(
-            layer_name=lr["layer_name"],
-            triggered=lr["triggered"],
-            confidence=lr["confidence"],
-            evidence=lr["evidence"],
-            duration_ms=lr["duration_ms"],
-        )
-        for lr in data.get("layer_results", [])
-    ]
-    return ScanResult(
+    layer_results = []
+    for lr in data.get("layer_results", []):
+        if "findings" in lr:
+            findings = [Finding.from_dict(f) for f in lr["findings"]]
+            layer_results.append(LayerResult(
+                layer_name=lr["layer_name"],
+                triggered=lr["triggered"],
+                confidence=lr["confidence"],
+                findings=findings,
+                duration_ms=lr["duration_ms"],
+            ))
+        else:
+            # Legacy cache entry (pre-v0.4): fall back to evidence strings.
+            layer_results.append(LayerResult(
+                layer_name=lr["layer_name"],
+                triggered=lr["triggered"],
+                confidence=lr["confidence"],
+                evidence=lr.get("evidence", []),
+                duration_ms=lr["duration_ms"],
+            ))
+    result = ScanResult(
         chunk_id=data["chunk_id"],
         is_poisoned=data["is_poisoned"],
         confidence=data["confidence"],
@@ -48,6 +61,8 @@ def _deserialize_result(data: dict) -> ScanResult:
         scan_duration_ms=data.get("scan_duration_ms", 0.0),
         from_cache=True,
     )
+    result.report = RiskReport.from_scan(result)
+    return result
 
 
 class HashCache:
