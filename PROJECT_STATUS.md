@@ -1,9 +1,10 @@
 # Anti-Venom — Project Status Report
 
-> Last updated: 2026-06-20 | Version: 0.3.2 | Tests: 162/162 passing | ruff + mypy clean
+> Last updated: 2026-06-20 | Version: 0.4.0 | Tests: 195/195 passing | ruff + mypy clean
 >
 > **v0.3.1**: production-hardened for multi-user use — see Section 12.
 > **v0.3.2**: DistilBERT trained (recall 74%→98%), LLM Judge validated vs real Ollama — see Section 13.
+> **v0.4.0**: engine reframe — Layer-0 normalization, categorized findings + RiskReport, LLM Judge repositioned — see Section 14.
 
 ---
 
@@ -516,3 +517,51 @@ The classifier caught 120 of the 130 attacks the regex layers missed — **the �
 ---
 
 *Anti-Venom v0.3.2 — 54 source files · 162 tests · 99.8% precision · 98% recall (trained classifier) · multi-user hardened · classifier + LLM judge validated on real hardware*
+
+---
+
+## 14. v0.4.0 — Engine Reframe (model wrapper → security engine)
+
+Answering the architecture review: Anti-Venom is no longer "a package that loads a
+classifier." The classifier is one detector inside a defense-in-depth engine. Three
+changes, all with detection accuracy **unchanged** (99.8% precision / 98% recall / F1
+0.989 on the benchmark) and 195/195 tests green.
+
+### 1. Layer-0 normalization — evasion resistance (the real gap)
+`antivenom/core/normalize.py` (pure stdlib). Before the detection layers run, input is
+NFKC-normalized, stripped of zero-width/bidi characters, folded through a high-precision
+Cyrillic/Greek→Latin homoglyph table, and scanned for base64/hex blobs that are decoded
+and re-scanned. The scanner runs both the **raw and normalized** forms; an obfuscation
+attempt is itself recorded as an `ENCODING_EVASION` finding. The new evasion benchmark
+(`tests/integration/test_evasion_benchmark.py`) proves homoglyph / zero-width / full-width
+/ base64 / hex variants of known attacks — which slip past raw regex — are now caught,
+while benign and legitimately non-ASCII text stay clean.
+
+### 2. Categorized findings + structured RiskReport (explainability)
+`antivenom/core/finding.py` (`Technique` enum of 14 categories, `Finding` with matched
+span/offsets/form) and `antivenom/core/report.py` (`RiskReport`: risk level, per-category
+breakdown, top reason, classifier confidence, evasion forms, remediation, `to_dict()`,
+deterministic `explain()`). Every layer emits categorized findings instead of opaque
+strings. **Back-compat:** `LayerResult.findings` is the source of truth and `evidence`
+is a derived read-only property, so cache, audit, quarantine, CLI, and integrations were
+untouched. The cache serializer persists findings with a legacy-dict fallback.
+
+### 3. LLM Judge repositioned — explainer/arbiter, never the hot path
+Removed from the detection pipeline entirely. Summoned only via
+`scanner.explain()` / `scan_text(explain=True)`: it adds a natural-language rationale and
+arbitrates borderline SUSPICIOUS verdicts (promote to MALICIOUS), degrading gracefully if
+Ollama is down. A test asserts the default scan path makes **zero** network calls.
+
+### Positioning broadened
+Public framing is now an "LLM input-security engine" (RAG documents + agent inputs +
+tool/MCP outputs); `scan_text` gained `source_type`/`explain`. New exports: `Finding`,
+`Technique`, `RiskReport`.
+
+### Still pending / next (v0.5 — DX & adoption)
+FastAPI `AntiVenomMiddleware`, `antivenom scan ./folder` + `scan_folder()`,
+`sanitize_documents()` one-liner, LangGraph node, `SecureOpenAI`/`SecureRetriever`. Plus
+the standing item: publish the trained model to HF Hub (needs the user's `HF_TOKEN`).
+
+---
+
+*Anti-Venom v0.4.0 — 57 source files · 195 tests · 99.8% precision · 98% recall · evasion-resistant, explainable, multi-user hardened · ruff + mypy clean*
