@@ -28,3 +28,8 @@ class ScannerConfig:
     # Input normalization / evasion resistance (v0.4)
     normalize_enabled: bool = True
     normalize_decode_blobs: bool = True
+    # Trust Plane (v0.5) — opt-in signed provenance + retrieval-time flow control.
+    # The detector is unaffected when this is off (default).
+    trust_enabled: bool = False
+    # HMAC key for sealing trust labels; falls back to ANTIVENOM_TRUST_KEY env var.
+    trust_key: str | None = None

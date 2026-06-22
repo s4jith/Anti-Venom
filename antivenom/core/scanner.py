@@ -281,6 +281,21 @@ class AntiVenomScanner:
     def scan_batch(self, chunks: list[Chunk]) -> list[ScanResult]:
         return _run_coro_blocking(self.ascan_batch(chunks))
 
+    def seal(self, chunk: Chunk, source_type: str = "", registry: Any = None, sealer: Any = None) -> Chunk:
+        """Scan `chunk` and bind a signed Trust Plane label to it (v0.5).
+
+        Returns a copy of the chunk with the sealed label in metadata. The
+        scan verdict feeds the trust score: a malicious chunk is quarantined
+        regardless of source reputation. Requires a key (arg, config.trust_key,
+        or ANTIVENOM_TRUST_KEY)."""
+        from antivenom.trust import seal_chunk
+        from antivenom.trust.sealer import TrustSealer
+        if sealer is None:
+            sealer = TrustSealer(self.config.trust_key)
+        result = self.scan(chunk)
+        return seal_chunk(chunk, sealer=sealer, source_type=source_type,
+                          registry=registry, scan_result=result)
+
     def close(self) -> None:
         """Release the audit log file handle and quarantine DB connection."""
         with self._init_lock:
