@@ -9,7 +9,7 @@ from antivenom.core.result import LayerResult, ScanResult, Severity
 from antivenom.core.scanner import AntiVenomScanner
 from antivenom.rules.registry import RuleRegistry
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "__version__",

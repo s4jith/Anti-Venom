@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "antivenom"
-version = "0.4.0"
+version = "0.5.0"
 description = "RAG Corpus Poisoning Detector — scans document chunks for adversarial prompt injections before vector DB storage"
 readme = "README.md"
 license = { file = "LICENSE" }
