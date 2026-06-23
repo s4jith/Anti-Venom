@@ -83,3 +83,4 @@ logs/
 *.safetensors
 *.pt
 *.pth
+COMPETITIVE_ANALYSIS.md
