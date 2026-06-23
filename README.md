@@ -1,16 +1,38 @@
 # Anti-Venom
 
-**The Trust Plane for RAG.** Your vector database destroys provenance — once a document is embedded, *"where did this come from and can I trust it"* is gone, and at retrieval a hostile web scrape is indistinguishable from your verified manual. Anti-Venom binds a **cryptographically signed trust label** to every chunk and enforces it at retrieval, so untrusted knowledge is structurally barred from being treated as authoritative.
+**The Trust Plane for RAG.** Vector databases destroy provenance: once a document
+is embedded, "where did this come from and can I trust it?" disappears. At
+retrieval time, a hostile web scrape can look identical to a verified internal
+manual. Anti-Venom preserves that missing knowledge-plane signal by binding a
+cryptographically signed `TrustLabel` to every chunk and enforcing it when chunks
+come back from retrieval.
 
 ```bash
 pip install antivenom
 ```
 
-> **v0.5.0 released — the Trust Plane.** Beyond detection: every chunk gets a signed `TrustLabel` (source reputation × scan verdict) that survives the embed→retrieve round-trip; a `TrustGate` enforces an information-flow `FlowPolicy` at retrieval — quarantined sources dropped, untrusted content **neutralized** (spotlighted into inert data), tampering **fails closed**. Detection is probabilistic and loses the arms race; **provenance is deterministic** — even an injection the detector missed is contained, because its *source* was untrusted. 231 tests, ruff + mypy clean.
+> **v0.5.0 released: the Trust Plane.** Beyond detection: every chunk gets a
+> signed `TrustLabel` (`source reputation * scan verdict`) that survives the
+> embed -> retrieve round trip. `TrustGate` enforces a retrieval-time
+> information-flow `FlowPolicy`: quarantined chunks are dropped, untrusted chunks
+> are neutralized with spotlighting, and tampering fails closed through
+> HMAC-SHA256 verification. Detection is probabilistic; provenance is
+> deterministic. Even an injection the detector misses is contained when its
+> source is untrusted.
 
-**Why this is different.** Detectors (LLM Guard, Lakera, Azure Prompt Shields) and IFC runtimes (DeepMind CaMeL, Microsoft FIDES) leave the same gap: nobody preserves and enforces **knowledge provenance** across the vector store. Anti-Venom owns that plane. The fine-tuned DistilBERT classifier and Layer-0 normalization are still here — they now feed the trust label rather than being the whole product.
+**Why this is different.** The AI-security field largely splits into two camps:
+probabilistic detectors (LLM Guard, Lakera, Azure Prompt Shields) and
+information-flow runtimes (DeepMind CaMeL, Microsoft FIDES, MVAR). They share a
+blind spot: the knowledge plane. IFC runtimes protect agent control-plane sinks
+such as shell/API calls, but they do not preserve and enforce provenance across a
+vector store. Anti-Venom owns that plane. The fine-tuned DistilBERT classifier
+and Layer-0 normalization are still here; they now feed the trust label instead
+of being the whole product.
 
-**Detection engine (still included):** **99.8% precision · 98% recall · F1 0.989.** Normalization → deterministic patterns → semantic/classifier → confidence aggregation → categorized `RiskReport`. The scan verdict is one input to a chunk's trust score.
+**Detection engine (still included):** **99.8% precision, 98% recall, F1
+0.989.** Normalization -> deterministic patterns -> semantic/classifier ->
+confidence aggregation -> categorized `RiskReport`. The scan verdict is one
+input to a chunk's trust score.
 
 ---
 
@@ -116,10 +138,12 @@ The normalization front end de-obfuscates **homoglyphs, zero-width characters,
 full-width text, and base64/hex-wrapped payloads** and scans both forms — so
 attacks that evade keyword filters are caught, and the evasion itself is flagged.
 
-### The Trust Plane (v0.5) — signed provenance + retrieval-time flow control
+### The Trust Plane (v0.5): signed provenance + retrieval-time flow control
 
 Detection has a ceiling; **provenance is deterministic.** Seal every chunk at
-ingestion, then gate what comes back at retrieval. Two calls:
+ingestion, carry the signed label in chunk metadata through embed/retrieve, then
+gate what comes back before it reaches the LLM. The API is intentionally two
+calls:
 
 ```python
 from antivenom import AntiVenomScanner
@@ -127,17 +151,17 @@ from antivenom.trust import SourceRegistry, TrustSealer, TrustGate, FlowPolicy, 
 from antivenom.core.chunk import Chunk
 
 scanner = AntiVenomScanner()
-sealer  = TrustSealer(key="your-deployment-key")   # or ANTIVENOM_TRUST_KEY
-registry = SourceRegistry()                         # source reputation (defaults + your rules)
+sealer = TrustSealer(key="your-deployment-key")  # or ANTIVENOM_TRUST_KEY
+registry = SourceRegistry()                      # defaults + glob/YAML source rules
 
-# 1) INGEST — bind a signed trust label (source reputation × scan verdict)
+# 1) INGEST: bind a signed trust label (source reputation * scan verdict)
 def ingest(text, source_id, source_type):
     chunk = Chunk(text=text, source_id=source_id)
     return seal_chunk(chunk, sealer=sealer, source_type=source_type,
                       registry=registry, scan_result=scanner.scan_text(text))
 # (or one-liner: scanner.seal(chunk, source_type="web", sealer=sealer))
 
-# 2) RETRIEVE — enforce an information-flow policy on what the retriever returns
+# 2) RETRIEVE: enforce an information-flow policy on retriever output
 gate = TrustGate(sealer, FlowPolicy())
 result = gate.gate([(c.source_id, c.text, c.metadata) for c in retrieved_chunks])
 
@@ -150,16 +174,17 @@ What the gate does, deterministically:
 | Source | Tier | Action | Effect |
 |---|---|---|---|
 | Verified / internal, clean scan | `TRUSTED`/`VERIFIED` | **allow** | Authoritative context |
-| Open web, clean scan | `UNTRUSTED` | **neutralize** | Spotlighted into inert data — never obeyed as instructions |
+| Open web, clean scan | `UNTRUSTED` | **neutralize** | Spotlighted into inert data; never authoritative |
 | Any source, malicious scan | `QUARANTINED` | **drop** | Removed from context entirely |
-| Tampered / unsigned label | — | **drop** | Fails closed (HMAC verification) |
+| Tampered / unsigned label | n/a | **drop** | Fails closed through HMAC-SHA256 verification |
 
-The key property: **even an injection the detector misses is contained**, because a
-low-trust *source* can never be treated as authoritative. You stop betting your
-security on perfect detection. Trust labels are HMAC-signed, so an attacker who
-poisons the vector store cannot forge a higher trust score — verification fails and
-the chunk is dropped. The label feeds (and is compatible with) IFC agent runtimes
-like CaMeL / FIDES, which need exactly this provenance signal for RAG data.
+The killer property, covered by the integration tests: **even an injection the
+detector misses is contained**, because a low-trust source can never be treated
+as authoritative. You stop betting security on perfect detection. Trust labels
+are HMAC-SHA256 signed, so an attacker who poisons the vector store cannot forge
+`trust_score=0.99` or promote a chunk to `VERIFIED`; verification fails and the
+chunk is dropped. The resulting provenance signal complements IFC agent runtimes
+such as CaMeL, FIDES, and MVAR, which need trustworthy labels for RAG data.
 
 ### Explanations & arbitration (LLM Judge, opt-in)
 
